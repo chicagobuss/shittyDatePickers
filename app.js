@@ -8,23 +8,24 @@ canvas.width = 800;
 canvas.height = 600;
 const ctx = canvas.getContext('2d');
 
-// Date digits (MM-DD-YYYY format)
+// Date digits (MM-DD-YYYY format) - spread out across canvas
+// gearRatio: how much this digit should spin relative to input (0.1 = 10x slower)
 const digits = {
-    month1: { value: 0, velocity: 0, x: 200, y: 200, label: 'M' },   // Month tens
-    month2: { value: 1, velocity: 0, x: 250, y: 200, label: 'M' },   // Month ones
-    day1:   { value: 0, velocity: 0, x: 330, y: 200, label: 'D' },   // Day tens
-    day2:   { value: 1, velocity: 0, x: 380, y: 200, label: 'D' },   // Day ones
-    year1:  { value: 2, velocity: 0, x: 460, y: 200, label: 'Y' },   // Year thousands
-    year2:  { value: 0, velocity: 0, x: 510, y: 200, label: 'Y' },   // Year hundreds
-    year3:  { value: 2, velocity: 0, x: 560, y: 200, label: 'Y' },   // Year tens
-    year4:  { value: 5, velocity: 0, x: 610, y: 200, label: 'Y' }    // Year ones
+    month1: { value: 0, velocity: 0, x: 160, y: 200, label: 'M', gearRatio: 0.1 },   // Month tens
+    month2: { value: 1, velocity: 0, x: 210, y: 200, label: 'M', gearRatio: 1.0 },   // Month ones
+    day1:   { value: 0, velocity: 0, x: 310, y: 200, label: 'D', gearRatio: 0.1 },   // Day tens
+    day2:   { value: 1, velocity: 0, x: 360, y: 200, label: 'D', gearRatio: 1.0 },   // Day ones
+    year1:  { value: 2, velocity: 0, x: 470, y: 200, label: 'Y', gearRatio: 0.1 },   // Year thousands
+    year2:  { value: 0, velocity: 0, x: 520, y: 200, label: 'Y', gearRatio: 0.1 },   // Year hundreds
+    year3:  { value: 2, velocity: 0, x: 570, y: 200, label: 'Y', gearRatio: 0.1 },   // Year tens
+    year4:  { value: 5, velocity: 0, x: 620, y: 200, label: 'Y', gearRatio: 1.0 }    // Year ones
 };
 
-// Levers to control each section
+// Levers to control each section (spread out more)
 const levers = {
-    month: { x: 250, y: 400, angle: 0, dragging: false, target: ['month1', 'month2'] },
-    day:   { x: 400, y: 400, angle: 0, dragging: false, target: ['day1', 'day2'] },
-    year:  { x: 550, y: 400, angle: 0, dragging: false, target: ['year1', 'year2', 'year3', 'year4'] }
+    month: { x: 200, y: 400, angle: 0, dragging: false, target: ['month2', 'month1'] }, // Ones first, then tens
+    day:   { x: 400, y: 400, angle: 0, dragging: false, target: ['day2', 'day1'] },
+    year:  { x: 600, y: 400, angle: 0, dragging: false, target: ['year4', 'year3', 'year2', 'year1'] }
 };
 
 const DRAG_INFLUENCE = 0.15; // How much adjacent digits affect each other
@@ -125,8 +126,8 @@ function drawSeparators() {
     ctx.font = 'bold 30px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('-', 305, 200);
-    ctx.fillText('-', 435, 200);
+    ctx.fillText('-', 265, 200); // Between month and day
+    ctx.fillText('-', 420, 200); // Between day and year
 }
 
 // Update physics
@@ -200,9 +201,11 @@ canvas.addEventListener('mousemove', (e) => {
             previousMouseAngle = currentAngle;
             
             // Apply velocity to target digits (25% less sensitive)
+            // Use gearRatio to make tens/hundreds digits spin slower
             const speed = angleDelta * 1.5;
             lever.target.forEach(digitKey => {
-                digits[digitKey].velocity += speed;
+                const digit = digits[digitKey];
+                digits[digitKey].velocity += speed * digit.gearRatio;
             });
         }
     });
