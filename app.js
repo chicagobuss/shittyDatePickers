@@ -380,14 +380,22 @@ function update() {
     digits.year4.velocity += year3to4Drag;
     digits.year3.velocity -= year3to4Drag * 0.3;
     
-    // EVIL CROSS-CONNECTIONS for maximum chaos!
-    // Day digits drag the year ONES place
+    // EVIL CROSS-CONNECTIONS for maximum chaos (but subtle!)
+    // Month changes affect day (0.5%) and year (0.4%) - very subtle!
+    const monthVel = (digits.month1.velocity + digits.month2.velocity) / 2;
+    const monthToDayDrag = monthVel * 0.005;
+    digits.day2.velocity += monthToDayDrag;
+    
+    const monthToYearDrag = monthVel * 0.004;
+    digits.year4.velocity += monthToYearDrag;
+    
+    // Day digits drag the year ONES place (subtle)
     const dayVel = (digits.day1.velocity + digits.day2.velocity) / 2;
-    const dayToYearDrag = dayVel * DRAG_INFLUENCE * 0.8;
+    const dayToYearDrag = dayVel * DRAG_INFLUENCE * 0.5;
     digits.year4.velocity += dayToYearDrag;
     
-    // Year ones place drags the month TENS place (circular dependency!)
-    const yearOnesToMonthDrag = digits.year4.velocity * DRAG_INFLUENCE * 0.8;
+    // Year ones place drags the month TENS place (circular dependency, subtle!)
+    const yearOnesToMonthDrag = digits.year4.velocity * DRAG_INFLUENCE * 0.5;
     digits.month1.velocity += yearOnesToMonthDrag;
 }
 
