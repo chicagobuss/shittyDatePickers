@@ -50,7 +50,7 @@ const digits = {
 const levers = {
     month: { baseX: 200, baseY: 385, angle: 0, dragging: false, target: ['month2', 'month1'] }, // Ones first, then tens
     day:   { baseX: 400, baseY: 385, angle: 0, dragging: false, target: ['day2', 'day1'] },
-    year:  { baseX: 600, baseY: 385, angle: 0, dragging: false, target: ['year4', 'year3', 'year2', 'year1'] }
+    year:  { baseX: 600, baseY: 385, angle: 0, dragging: false, target: ['year4'] } // Only control ones place, let physics drag the rest
 };
 
 const DRAG_INFLUENCE = 0.015; // How much adjacent digits affect each other
