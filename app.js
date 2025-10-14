@@ -199,8 +199,8 @@ canvas.addEventListener('mousemove', (e) => {
             lever.angle = currentAngle;
             previousMouseAngle = currentAngle;
             
-            // Apply velocity to target digits
-            const speed = angleDelta * 2;
+            // Apply velocity to target digits (25% less sensitive)
+            const speed = angleDelta * 1.5;
             lever.target.forEach(digitKey => {
                 digits[digitKey].velocity += speed;
             });
@@ -251,15 +251,8 @@ function animate() {
     ctx.fillStyle = '#ecf0f1';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Title
-    ctx.fillStyle = '#2c3e50';
-    ctx.font = 'bold 24px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Interdependent Date Picker', canvas.width / 2, 50);
-    
-    ctx.font = '14px sans-serif';
-    ctx.fillStyle = '#7f8c8d';
-    ctx.fillText('Drag the levers to spin the digits (they affect each other!)', canvas.width / 2, 80);
+    // Minimal header spacing
+    // (no title needed)
     
     // Update physics
     update();
@@ -273,12 +266,12 @@ function animate() {
     // Draw levers
     Object.keys(levers).forEach(name => drawLever(name, levers[name]));
     
-    // Display current date
+    // Display current date (minimal)
     const date = getCurrentDate();
     ctx.fillStyle = '#2c3e50';
-    ctx.font = 'bold 20px monospace';
+    ctx.font = 'bold 18px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText(`Current Date: ${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}-${date.year}`, 
+    ctx.fillText(`${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}-${date.year}`, 
                  canvas.width / 2, 520);
     
     requestAnimationFrame(animate);
@@ -304,12 +297,7 @@ document.getElementById('resetBtn').addEventListener('click', () => {
     digits.year4.velocity = 0;
 });
 
-// Hide the other controls since they don't apply anymore
-document.getElementById('stringLength').parentElement.style.display = 'none';
-document.getElementById('gravity').parentElement.style.display = 'none';
-
 // Start animation
 animate();
 
-console.log('Shitty Date Picker with interdependent digits loaded!');
-console.log('Drag the levers to spin the digits - watch them affect each other!');
+console.log('Shitty Date Picker loaded!');
