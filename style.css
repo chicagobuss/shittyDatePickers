@@ -40,6 +40,23 @@ h1 {
     cursor: default;
     display: block;
     margin: 0 auto;
+    max-width: 100%;
+    height: auto;
+    touch-action: none; /* Prevent default touch behaviors */
+}
+
+@media (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+    
+    h1 {
+        font-size: 1.8em;
+    }
+    
+    h3 {
+        font-size: 1em;
+    }
 }
 
 .controls {

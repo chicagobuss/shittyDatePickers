@@ -4,8 +4,19 @@
  */
 
 const canvas = document.getElementById('gameCanvas');
-canvas.width = 800;
-canvas.height = 600;
+
+// Make canvas responsive
+function resizeCanvas() {
+    const container = canvas.parentElement;
+    const maxWidth = Math.min(800, window.innerWidth - 40);
+    const aspectRatio = 600 / 800;
+    canvas.width = maxWidth;
+    canvas.height = maxWidth * aspectRatio;
+}
+
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
 const ctx = canvas.getContext('2d');
 
 // Full-screen fireworks canvas
@@ -14,28 +25,36 @@ const fireworksCtx = fireworksCanvas.getContext('2d');
 fireworksCanvas.width = window.innerWidth;
 fireworksCanvas.height = window.innerHeight;
 
-// Date digits (MM-DD-YYYY format) - spread out across canvas
+// Date digits (MM-DD-YYYY format) - use proportional positioning
 // gearRatio: how much this digit should spin relative to input (0.1 = 10x slower)
+function getScaledX(baseX) {
+    return (baseX / 800) * canvas.width;
+}
+
+function getScaledY(baseY) {
+    return (baseY / 600) * canvas.height;
+}
+
 const digits = {
-    month1: { value: 0, velocity: 0, x: 160, y: 200, label: 'M', gearRatio: 0.1 },   // Month tens
-    month2: { value: 1, velocity: 0, x: 210, y: 200, label: 'M', gearRatio: 1.0 },   // Month ones
-    day1:   { value: 0, velocity: 0, x: 310, y: 200, label: 'D', gearRatio: 0.1 },   // Day tens
-    day2:   { value: 1, velocity: 0, x: 360, y: 200, label: 'D', gearRatio: 1.0 },   // Day ones
-    year1:  { value: 2, velocity: 0, x: 470, y: 200, label: 'Y', gearRatio: 0.1 },   // Year thousands
-    year2:  { value: 0, velocity: 0, x: 520, y: 200, label: 'Y', gearRatio: 0.1 },   // Year hundreds
-    year3:  { value: 2, velocity: 0, x: 570, y: 200, label: 'Y', gearRatio: 0.1 },   // Year tens
-    year4:  { value: 5, velocity: 0, x: 620, y: 200, label: 'Y', gearRatio: 1.0 }    // Year ones
+    month1: { value: 0, velocity: 0, baseX: 200, baseY: 200, label: 'M', gearRatio: Math.PI / 30 },   // Month tens - irrational ratio
+    month2: { value: 1, velocity: 0, baseX: 250, baseY: 200, label: 'M', gearRatio: 1.0 },   // Month ones
+    day1:   { value: 0, velocity: 0, baseX: 320, baseY: 200, label: 'D', gearRatio: Math.PI / 30 },   // Day tens - irrational ratio
+    day2:   { value: 1, velocity: 0, baseX: 370, baseY: 200, label: 'D', gearRatio: 1.0 },   // Day ones
+    year1:  { value: 2, velocity: 0, baseX: 450, baseY: 200, label: 'Y', gearRatio: Math.PI / 30 },   // Year thousands - irrational ratio
+    year2:  { value: 0, velocity: 0, baseX: 500, baseY: 200, label: 'Y', gearRatio: Math.PI / 30 },   // Year hundreds - irrational ratio
+    year3:  { value: 2, velocity: 0, baseX: 550, baseY: 200, label: 'Y', gearRatio: Math.PI / 30 },   // Year tens - irrational ratio
+    year4:  { value: 5, velocity: 0, baseX: 600, baseY: 200, label: 'Y', gearRatio: 1.0 }    // Year ones
 };
 
 // Levers to control each section (spread out more)
 const levers = {
-    month: { x: 200, y: 400, angle: 0, dragging: false, target: ['month2', 'month1'] }, // Ones first, then tens
-    day:   { x: 400, y: 400, angle: 0, dragging: false, target: ['day2', 'day1'] },
-    year:  { x: 600, y: 400, angle: 0, dragging: false, target: ['year4', 'year3', 'year2', 'year1'] }
+    month: { baseX: 200, baseY: 385, angle: 0, dragging: false, target: ['month2', 'month1'] }, // Ones first, then tens
+    day:   { baseX: 400, baseY: 385, angle: 0, dragging: false, target: ['day2', 'day1'] },
+    year:  { baseX: 600, baseY: 385, angle: 0, dragging: false, target: ['year4', 'year3', 'year2', 'year1'] }
 };
 
-const DRAG_INFLUENCE = 0.025; // How much adjacent digits affect each other (50% less than before)
-const FRICTION = 0.95; // Friction to slow down spinning
+const DRAG_INFLUENCE = 0.015; // How much adjacent digits affect each other
+const FRICTION = 0.95;        // Friction to slow down spinning
 
 // Challenge mode
 let targetDate = null;
@@ -44,12 +63,20 @@ let fireworksTime = 0;
 let particles = [];
 let submittedDate = null;
 
+// Tutorial arrows
+let hasMovedLever = false;
+let arrowAnimTime = 0;
+
+// Easter egg - IDDQD cheat code
+let konamiBuffer = '';
+const CHEAT_CODE = 'iddqd';
+
 // Submit button on canvas
 const submitButton = {
-    x: 350,
-    y: 495,
-    width: 100,
-    height: 40,
+    baseX: 350,
+    baseY: 495,
+    baseWidth: 100,
+    baseHeight: 40,
     hovered: false,
     shaking: false,
     shakeOffset: 0,
@@ -127,17 +154,19 @@ generateTargetDate();
 
 // Draw a spinning digit wheel
 function drawDigit(digit) {
-    const width = 40;
-    const height = 60;
-    const radius = 100; // Virtual cylinder radius
+    const scale = canvas.width / 800;
+    const width = 48 * scale;  // 20% bigger (40 * 1.2)
+    const height = 72 * scale; // 20% bigger (60 * 1.2)
+    const x = getScaledX(digit.baseX);
+    const y = getScaledY(digit.baseY);
     
     ctx.save();
-    ctx.translate(digit.x, digit.y);
+    ctx.translate(x, y);
     
     // Draw the digit box
     ctx.fillStyle = '#2c3e50';
     ctx.strokeStyle = '#34495e';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.4 * scale; // Also scale the line width
     ctx.fillRect(-width/2, -height/2, width, height);
     ctx.strokeRect(-width/2, -height/2, width, height);
     
@@ -145,8 +174,8 @@ function drawDigit(digit) {
     const currentDigit = Math.floor(digit.value) % 10;
     const nextDigit = (currentDigit + 1) % 10;
     const prevDigit = (currentDigit + 9) % 10;
-    // Tighter spacing - digits are 40px apart instead of 60px
-    const digitSpacing = 40;
+    // Tighter spacing - digits are 48px apart (scaled with 20% increase)
+    const digitSpacing = 48;
     // Negative offset so digits scroll UP as value increases
     const fractional = digit.value % 1;
     const offset = -fractional * digitSpacing;
@@ -154,7 +183,7 @@ function drawDigit(digit) {
     // Determine which digit is most visible (for highlighting)
     const mostVisible = fractional < 0.5 ? 'current' : 'next';
     
-    ctx.font = 'bold 36px monospace';
+    ctx.font = `bold ${43.2 * scale}px monospace`; // 20% bigger (36 * 1.2)
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     
@@ -182,26 +211,27 @@ function drawDigit(digit) {
     
     // Draw label
     ctx.fillStyle = '#7f8c8d';
-    ctx.font = '12px monospace';
+    ctx.font = `${14.4 * scale}px monospace`; // 20% bigger (12 * 1.2)
     ctx.textAlign = 'center';
-    ctx.fillText(digit.label, digit.x, digit.y - 50);
+    ctx.fillText(digit.label, x, y - 60 * scale); // Adjust spacing for bigger boxes
 }
 
 // Draw a lever
 function drawLever(name, lever) {
-    const handleLength = 80;
-    const baseX = lever.x;
-    const baseY = lever.y;
+    const scale = canvas.width / 800;
+    const handleLength = 80 * scale;
+    const baseX = getScaledX(lever.baseX);
+    const baseY = getScaledY(lever.baseY);
     const handleX = baseX + Math.cos(lever.angle) * handleLength;
     const handleY = baseY + Math.sin(lever.angle) * handleLength;
     
     // Draw base
     ctx.fillStyle = '#34495e';
     ctx.beginPath();
-    ctx.arc(baseX, baseY, 15, 0, Math.PI * 2);
+    ctx.arc(baseX, baseY, 15 * scale, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#2c3e50';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 * scale;
     ctx.stroke();
     
     // Draw lever arm
@@ -209,34 +239,83 @@ function drawLever(name, lever) {
     ctx.moveTo(baseX, baseY);
     ctx.lineTo(handleX, handleY);
     ctx.strokeStyle = lever.dragging ? '#e74c3c' : '#7f8c8d';
-    ctx.lineWidth = 6;
+    ctx.lineWidth = 6 * scale;
     ctx.lineCap = 'round';
     ctx.stroke();
     
     // Draw handle
-    ctx.fillStyle = lever.dragging ? '#e74c3c' : '#95a5a6';
+    ctx.fillStyle = lever.dragging ? '#e74c3c' : '#ff8c42';
     ctx.beginPath();
-    ctx.arc(handleX, handleY, 12, 0, Math.PI * 2);
+    ctx.arc(handleX, handleY, 12 * scale, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = '#2c3e50';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2 * scale;
     ctx.stroke();
+    
+    // Draw tutorial arrows (only if user hasn't moved any lever yet)
+    if (!hasMovedLever) {
+        drawTutorialArrows(handleX, handleY, lever.angle, scale);
+    }
     
     // Draw label
     ctx.fillStyle = '#34495e';
-    ctx.font = 'bold 14px sans-serif';
+    ctx.font = `bold ${14 * scale}px sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText(name.toUpperCase(), baseX, baseY + 35);
+    ctx.fillText(name.toUpperCase(), baseX, baseY + 35 * scale);
 }
 
-// Draw separators
+// Draw animated arrows around handle to indicate dragging
+function drawTutorialArrows(handleX, handleY, leverAngle, scale) {
+    // Oscillate position along the circular path (not rotation)
+    const moveDistance = Math.sin(arrowAnimTime * 0.003) * 8 * scale; // Move back and forth
+    const arrowSize = 15 * scale;
+    const arrowDistance = 25 * scale;
+    
+    // Calculate perpendicular offset for circular motion
+    const perpX = -Math.sin(leverAngle) * moveDistance;
+    const perpY = Math.cos(leverAngle) * moveDistance;
+    
+    // Draw arrow on top (pointing upward)
+    ctx.save();
+    ctx.translate(handleX + perpX, handleY - arrowDistance + perpY);
+    ctx.rotate(0); // Point up
+    drawArrow(arrowSize, scale);
+    ctx.restore();
+    
+    // Draw arrow on bottom (pointing downward)
+    ctx.save();
+    ctx.translate(handleX - perpX, handleY + arrowDistance - perpY);
+    ctx.rotate(-Math.PI); // Point down
+    drawArrow(arrowSize, scale);
+    ctx.restore();
+}
+
+// Draw a single curved arrow
+function drawArrow(size, scale) {
+    ctx.fillStyle = '#e74c3c';
+    ctx.globalAlpha = 0.8;
+    
+    // Draw curved arrow shape
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-size * 0.5, size * 0.7);
+    ctx.lineTo(-size * 0.2, size * 0.5);
+    ctx.lineTo(size * 0.2, size * 0.5);
+    ctx.lineTo(size * 0.5, size * 0.7);
+    ctx.closePath();
+    ctx.fill();
+    
+    // Add a subtle stroke
+    ctx.strokeStyle = '#c0392b';
+    ctx.lineWidth = 1 * scale;
+    ctx.stroke();
+    
+    ctx.globalAlpha = 1.0;
+}
+
+// Draw separators - removed for cleaner odometer look
 function drawSeparators() {
-    ctx.fillStyle = '#34495e';
-    ctx.font = 'bold 30px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('-', 265, 200); // Between month and day
-    ctx.fillText('-', 420, 200); // Between day and year
+    // No separators - cleaner odometer appearance
 }
 
 // Update physics
@@ -312,17 +391,48 @@ function update() {
     digits.month1.velocity += yearOnesToMonthDrag;
 }
 
-// Mouse handling for levers
+// Mouse/Touch handling for levers
 let mouseX = 0;
 let mouseY = 0;
 let previousMouseAngle = 0;
 
-canvas.addEventListener('mousedown', (e) => {
+function getEventCoordinates(e) {
     const rect = canvas.getBoundingClientRect();
-    mouseX = e.clientX - rect.left;
-    mouseY = e.clientY - rect.top;
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    
+    let clientX, clientY;
+    if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+    } else if (e.changedTouches && e.changedTouches.length > 0) {
+        clientX = e.changedTouches[0].clientX;
+        clientY = e.changedTouches[0].clientY;
+    } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+    }
+    
+    return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top) * scaleY
+    };
+}
+
+function handlePointerDown(e) {
+    e.preventDefault();
+    const coords = getEventCoordinates(e);
+    mouseX = coords.x;
+    mouseY = coords.y;
+    
+    const scale = canvas.width / 800;
     
     // Check if clicking submit button
+    const buttonX = getScaledX(submitButton.baseX);
+    const buttonY = getScaledY(submitButton.baseY);
+    const buttonWidth = submitButton.baseWidth * scale;
+    const buttonHeight = submitButton.baseHeight * scale;
+    
     if (submitButton.hovered) {
         submittedDate = getCurrentDate();
         
@@ -348,33 +458,46 @@ canvas.addEventListener('mousedown', (e) => {
     // Check if clicking on any lever handle
     Object.keys(levers).forEach(name => {
         const lever = levers[name];
-        const handleLength = 80;
-        const handleX = lever.x + Math.cos(lever.angle) * handleLength;
-        const handleY = lever.y + Math.sin(lever.angle) * handleLength;
+        const handleLength = 80 * scale;
+        const baseX = getScaledX(lever.baseX);
+        const baseY = getScaledY(lever.baseY);
+        const handleX = baseX + Math.cos(lever.angle) * handleLength;
+        const handleY = baseY + Math.sin(lever.angle) * handleLength;
         const dist = Math.sqrt((mouseX - handleX) ** 2 + (mouseY - handleY) ** 2);
         
-        if (dist < 20) {
+        if (dist < 20 * scale) {
             lever.dragging = true;
-            previousMouseAngle = Math.atan2(mouseY - lever.y, mouseX - lever.x);
+            hasMovedLever = true; // Hide tutorial arrows once user interacts
+            previousMouseAngle = Math.atan2(mouseY - baseY, mouseX - baseX);
         }
     });
-});
+}
 
-canvas.addEventListener('mousemove', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    mouseX = e.clientX - rect.left;
-    mouseY = e.clientY - rect.top;
+function handlePointerMove(e) {
+    e.preventDefault();
+    const coords = getEventCoordinates(e);
+    mouseX = coords.x;
+    mouseY = coords.y;
+    
+    const scale = canvas.width / 800;
     
     // Check if hovering over submit button
-    submitButton.hovered = mouseX >= submitButton.x && 
-                           mouseX <= submitButton.x + submitButton.width &&
-                           mouseY >= submitButton.y && 
-                           mouseY <= submitButton.y + submitButton.height;
+    const buttonX = getScaledX(submitButton.baseX);
+    const buttonY = getScaledY(submitButton.baseY);
+    const buttonWidth = submitButton.baseWidth * scale;
+    const buttonHeight = submitButton.baseHeight * scale;
+    
+    submitButton.hovered = mouseX >= buttonX && 
+                           mouseX <= buttonX + buttonWidth &&
+                           mouseY >= buttonY && 
+                           mouseY <= buttonY + buttonHeight;
     
     Object.keys(levers).forEach(name => {
         const lever = levers[name];
         if (lever.dragging) {
-            const currentAngle = Math.atan2(mouseY - lever.y, mouseX - lever.x);
+            const baseX = getScaledX(lever.baseX);
+            const baseY = getScaledY(lever.baseY);
+            const currentAngle = Math.atan2(mouseY - baseY, mouseX - baseX);
             let angleDelta = currentAngle - previousMouseAngle;
             
             // Handle angle wrapping
@@ -398,25 +521,60 @@ canvas.addEventListener('mousemove', (e) => {
     let overHandle = false;
     Object.keys(levers).forEach(name => {
         const lever = levers[name];
-        const handleLength = 80;
-        const handleX = lever.x + Math.cos(lever.angle) * handleLength;
-        const handleY = lever.y + Math.sin(lever.angle) * handleLength;
+        const handleLength = 80 * scale;
+        const baseX = getScaledX(lever.baseX);
+        const baseY = getScaledY(lever.baseY);
+        const handleX = baseX + Math.cos(lever.angle) * handleLength;
+        const handleY = baseY + Math.sin(lever.angle) * handleLength;
         const dist = Math.sqrt((mouseX - handleX) ** 2 + (mouseY - handleY) ** 2);
-        if (dist < 20) overHandle = true;
+        if (dist < 20 * scale) overHandle = true;
     });
     canvas.style.cursor = (overHandle || submitButton.hovered) ? 'pointer' : 'default';
-});
+}
 
-canvas.addEventListener('mouseup', () => {
+function handlePointerUp(e) {
+    e.preventDefault();
     Object.keys(levers).forEach(name => {
         levers[name].dragging = false;
     });
-});
+}
 
-canvas.addEventListener('mouseleave', () => {
-    Object.keys(levers).forEach(name => {
-        levers[name].dragging = false;
-    });
+// Add event listeners for both mouse and touch
+canvas.addEventListener('mousedown', handlePointerDown);
+canvas.addEventListener('mousemove', handlePointerMove);
+canvas.addEventListener('mouseup', handlePointerUp);
+canvas.addEventListener('mouseleave', handlePointerUp);
+
+canvas.addEventListener('touchstart', handlePointerDown);
+canvas.addEventListener('touchmove', handlePointerMove);
+canvas.addEventListener('touchend', handlePointerUp);
+canvas.addEventListener('touchcancel', handlePointerUp);
+
+// Easter egg - listen for IDDQD cheat code
+document.addEventListener('keydown', (e) => {
+    konamiBuffer += e.key.toLowerCase();
+    
+    // Keep buffer to last 10 characters
+    if (konamiBuffer.length > 10) {
+        konamiBuffer = konamiBuffer.slice(-10);
+    }
+    
+    // Check if buffer ends with the cheat code
+    if (konamiBuffer.endsWith(CHEAT_CODE)) {
+        // Trigger fireworks!
+        showFireworks = true;
+        fireworksTime = Date.now();
+        fireworksCanvas.style.display = 'block';
+        createFireworks();
+        createFireworks();
+        setTimeout(() => createFireworks(), 200);
+        setTimeout(() => createFireworks(), 400);
+        setTimeout(() => createFireworks(), 600);
+        setTimeout(() => createFireworks(), 800);
+        
+        // Clear buffer
+        konamiBuffer = '';
+    }
 });
 
 // Get current date value (round to nearest visible digit)
@@ -441,6 +599,9 @@ function animate() {
     
     // Update physics
     update();
+    
+    // Update arrow animation
+    arrowAnimTime = Date.now();
     
     // Update shake animation
     if (submitButton.shaking) {
@@ -477,51 +638,57 @@ function animate() {
     // Draw levers
     Object.keys(levers).forEach(name => drawLever(name, levers[name]));
     
+    const scale = canvas.width / 800;
+    
     // Draw target date (LEFT SIDE)
     if (targetDate) {
         ctx.fillStyle = '#34495e';
-        ctx.font = '14px sans-serif';
+        ctx.font = `${21 * scale}px sans-serif`;
         ctx.textAlign = 'center';
-        ctx.fillText('Target Date:', 200, 500);
+        ctx.fillText('Target Date:', getScaledX(200), getScaledY(500));
         
         ctx.fillStyle = '#e74c3c';
-        ctx.font = 'bold 20px monospace';
+        ctx.font = `bold ${30 * scale}px monospace`;
         ctx.fillText(`${String(targetDate.month).padStart(2, '0')}-${String(targetDate.day).padStart(2, '0')}-${targetDate.year}`, 
-                     200, 525);
+                     getScaledX(200), getScaledY(535));
     }
     
     // Display current date (RIGHT SIDE)
     const date = getCurrentDate();
     ctx.fillStyle = '#34495e';
-    ctx.font = '14px sans-serif';
+    ctx.font = `${21 * scale}px sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText('Selected Date:', 600, 500);
+    ctx.fillText('Selected Date:', getScaledX(600), getScaledY(500));
     
     ctx.fillStyle = '#2c3e50';
-    ctx.font = 'bold 20px monospace';
+    ctx.font = `bold ${30 * scale}px monospace`;
     ctx.fillText(`${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}-${date.year}`, 
-                 600, 525);
+                 getScaledX(600), getScaledY(535));
     
     // Draw submit button (between the dates, with shake effect)
-    const buttonX = submitButton.x + submitButton.shakeOffset;
+    const buttonX = getScaledX(submitButton.baseX) + submitButton.shakeOffset * scale;
+    const buttonY = getScaledY(submitButton.baseY);
+    const buttonWidth = submitButton.baseWidth * scale;
+    const buttonHeight = submitButton.baseHeight * scale;
+    
     ctx.fillStyle = submitButton.hovered ? '#45a049' : '#4CAF50';
-    ctx.fillRect(buttonX, submitButton.y, submitButton.width, submitButton.height);
+    ctx.fillRect(buttonX, buttonY, buttonWidth, buttonHeight);
     ctx.strokeStyle = submitButton.shaking ? '#e74c3c' : '#2c3e50';
-    ctx.lineWidth = submitButton.shaking ? 3 : 2;
-    ctx.strokeRect(buttonX, submitButton.y, submitButton.width, submitButton.height);
+    ctx.lineWidth = submitButton.shaking ? 3 * scale : 2 * scale;
+    ctx.strokeRect(buttonX, buttonY, buttonWidth, buttonHeight);
     
     ctx.fillStyle = 'white';
-    ctx.font = 'bold 16px sans-serif';
+    ctx.font = `bold ${16 * scale}px sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('Submit', buttonX + submitButton.width / 2, submitButton.y + submitButton.height / 2);
+    ctx.fillText('Submit', buttonX + buttonWidth / 2, buttonY + buttonHeight / 2);
     
     // Draw success message on main canvas
     if (showFireworks) {
         ctx.fillStyle = '#27ae60';
-        ctx.font = 'bold 72px sans-serif';
+        ctx.font = `bold ${72 * scale}px sans-serif`;
         ctx.textAlign = 'center';
-        ctx.fillText('🎉 SUCCESS! 🎉', canvas.width / 2, 100);
+        ctx.fillText('🎉 SUCCESS! 🎉', canvas.width / 2, getScaledY(100));
     }
     
     requestAnimationFrame(animate);
