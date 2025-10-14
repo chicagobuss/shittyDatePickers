@@ -28,7 +28,7 @@ const levers = {
     year:  { x: 600, y: 400, angle: 0, dragging: false, target: ['year4', 'year3', 'year2', 'year1'] }
 };
 
-const DRAG_INFLUENCE = 0.15; // How much adjacent digits affect each other
+const DRAG_INFLUENCE = 0.075; // How much adjacent digits affect each other (50% less than before)
 const FRICTION = 0.95; // Friction to slow down spinning
 
 // Draw a spinning digit wheel
@@ -47,27 +47,42 @@ function drawDigit(digit) {
     ctx.fillRect(-width/2, -height/2, width, height);
     ctx.strokeRect(-width/2, -height/2, width, height);
     
-    // Draw current digit and adjacent ones for 3D effect
+    // Draw current digit and adjacent ones for smooth 3D scrolling effect
     const currentDigit = Math.floor(digit.value) % 10;
     const nextDigit = (currentDigit + 1) % 10;
     const prevDigit = (currentDigit + 9) % 10;
-    const offset = (digit.value % 1) * height;
+    // Tighter spacing - digits are 40px apart instead of 60px
+    const digitSpacing = 40;
+    // Negative offset so digits scroll UP as value increases
+    const fractional = digit.value % 1;
+    const offset = -fractional * digitSpacing;
+    
+    // Determine which digit is most visible (for highlighting)
+    const mostVisible = fractional < 0.5 ? 'current' : 'next';
     
     ctx.font = 'bold 36px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     
+    // Clip to box so digits don't overflow
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(-width/2, -height/2, width, height);
+    ctx.clip();
+    
     // Draw previous digit (above)
     ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-    ctx.fillText(prevDigit, 0, -height + offset);
+    ctx.fillText(prevDigit, 0, -digitSpacing + offset);
     
-    // Draw current digit
-    ctx.fillStyle = '#ecf0f1';
+    // Draw current digit (bright if most visible)
+    ctx.fillStyle = mostVisible === 'current' ? '#ecf0f1' : 'rgba(255, 255, 255, 0.5)';
     ctx.fillText(currentDigit, 0, offset);
     
-    // Draw next digit (below)
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-    ctx.fillText(nextDigit, 0, height + offset);
+    // Draw next digit (below, bright if most visible)
+    ctx.fillStyle = mostVisible === 'next' ? '#ecf0f1' : 'rgba(255, 255, 255, 0.5)';
+    ctx.fillText(nextDigit, 0, digitSpacing + offset);
+    
+    ctx.restore();
     
     ctx.restore();
     
@@ -143,18 +158,64 @@ function update() {
         if (digits[key].value < 0) digits[key].value += 1000;
     });
     
-    // Apply drag influence between adjacent digits
-    for (let i = 0; i < digitKeys.length - 1; i++) {
-        const current = digits[digitKeys[i]];
-        const next = digits[digitKeys[i + 1]];
-        
-        // When one digit spins, it drags the adjacent ones
-        const velDiff = current.velocity - next.velocity;
-        const drag = velDiff * DRAG_INFLUENCE;
-        
-        next.velocity += drag;
-        current.velocity -= drag * 0.3; // Back-drag (smaller effect)
+    // Apply realistic constraints (the false hope!)
+    // Month tens can ONLY be 0 or 1 (wrap before it would round to 2)
+    const month1Base = Math.floor(digits.month1.value / 10) * 10;
+    const month1Digit = digits.month1.value % 10;
+    if (month1Digit >= 1.5) {
+        // Wrap at 1.5 so it never rounds to 2
+        // Map 1.5->0.0, 1.7->0.2, etc.
+        const wrapped = month1Digit - 1.5;
+        digits.month1.value = month1Base + wrapped;
     }
+    
+    // Day tens can only be 0-3 (wrap before it would round to 4)
+    const day1Base = Math.floor(digits.day1.value / 10) * 10;
+    const day1Digit = digits.day1.value % 10;
+    if (day1Digit >= 3.5) {
+        // Wrap at 3.5 so it never rounds to 4
+        const wrapped = day1Digit - 3.5;
+        digits.day1.value = day1Base + wrapped;
+    }
+    
+    // Apply drag influence between adjacent digits WITHIN each section only
+    // Month section
+    const monthVelDiff = digits.month1.velocity - digits.month2.velocity;
+    const monthDrag = monthVelDiff * DRAG_INFLUENCE;
+    digits.month2.velocity += monthDrag;
+    digits.month1.velocity -= monthDrag * 0.3;
+    
+    // Day section
+    const dayVelDiff = digits.day1.velocity - digits.day2.velocity;
+    const dayDrag = dayVelDiff * DRAG_INFLUENCE;
+    digits.day2.velocity += dayDrag;
+    digits.day1.velocity -= dayDrag * 0.3;
+    
+    // Year section (cascade through all 4 digits)
+    const year1to2Diff = digits.year1.velocity - digits.year2.velocity;
+    const year1to2Drag = year1to2Diff * DRAG_INFLUENCE;
+    digits.year2.velocity += year1to2Drag;
+    digits.year1.velocity -= year1to2Drag * 0.3;
+    
+    const year2to3Diff = digits.year2.velocity - digits.year3.velocity;
+    const year2to3Drag = year2to3Diff * DRAG_INFLUENCE;
+    digits.year3.velocity += year2to3Drag;
+    digits.year2.velocity -= year2to3Drag * 0.3;
+    
+    const year3to4Diff = digits.year3.velocity - digits.year4.velocity;
+    const year3to4Drag = year3to4Diff * DRAG_INFLUENCE;
+    digits.year4.velocity += year3to4Drag;
+    digits.year3.velocity -= year3to4Drag * 0.3;
+    
+    // EVIL CROSS-CONNECTIONS for maximum chaos!
+    // Day digits drag the year ONES place
+    const dayVel = (digits.day1.velocity + digits.day2.velocity) / 2;
+    const dayToYearDrag = dayVel * DRAG_INFLUENCE * 0.8;
+    digits.year4.velocity += dayToYearDrag;
+    
+    // Year ones place drags the month TENS place (circular dependency!)
+    const yearOnesToMonthDrag = digits.year4.velocity * DRAG_INFLUENCE * 0.8;
+    digits.month1.velocity += yearOnesToMonthDrag;
 }
 
 // Mouse handling for levers
@@ -235,14 +296,15 @@ canvas.addEventListener('mouseleave', () => {
     });
 });
 
-// Get current date value
+// Get current date value (round to nearest visible digit)
 function getCurrentDate() {
-    const month = Math.floor(digits.month1.value % 10) * 10 + Math.floor(digits.month2.value % 10);
-    const day = Math.floor(digits.day1.value % 10) * 10 + Math.floor(digits.day2.value % 10);
-    const year = Math.floor(digits.year1.value % 10) * 1000 + 
-                 Math.floor(digits.year2.value % 10) * 100 + 
-                 Math.floor(digits.year3.value % 10) * 10 + 
-                 Math.floor(digits.year4.value % 10);
+    const roundDigit = (val) => Math.round(val) % 10;
+    const month = roundDigit(digits.month1.value) * 10 + roundDigit(digits.month2.value);
+    const day = roundDigit(digits.day1.value) * 10 + roundDigit(digits.day2.value);
+    const year = roundDigit(digits.year1.value) * 1000 + 
+                 roundDigit(digits.year2.value) * 100 + 
+                 roundDigit(digits.year3.value) * 10 + 
+                 roundDigit(digits.year4.value);
     return { month, day, year };
 }
 
