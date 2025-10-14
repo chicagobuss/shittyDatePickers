@@ -8,6 +8,12 @@ canvas.width = 800;
 canvas.height = 600;
 const ctx = canvas.getContext('2d');
 
+// Full-screen fireworks canvas
+const fireworksCanvas = document.getElementById('fireworksCanvas');
+const fireworksCtx = fireworksCanvas.getContext('2d');
+fireworksCanvas.width = window.innerWidth;
+fireworksCanvas.height = window.innerHeight;
+
 // Date digits (MM-DD-YYYY format) - spread out across canvas
 // gearRatio: how much this digit should spin relative to input (0.1 = 10x slower)
 const digits = {
@@ -28,8 +34,96 @@ const levers = {
     year:  { x: 600, y: 400, angle: 0, dragging: false, target: ['year4', 'year3', 'year2', 'year1'] }
 };
 
-const DRAG_INFLUENCE = 0.075; // How much adjacent digits affect each other (50% less than before)
+const DRAG_INFLUENCE = 0.025; // How much adjacent digits affect each other (50% less than before)
 const FRICTION = 0.95; // Friction to slow down spinning
+
+// Challenge mode
+let targetDate = null;
+let showFireworks = false;
+let fireworksTime = 0;
+let particles = [];
+let submittedDate = null;
+
+// Submit button on canvas
+const submitButton = {
+    x: 350,
+    y: 495,
+    width: 100,
+    height: 40,
+    hovered: false,
+    shaking: false,
+    shakeOffset: 0,
+    shakeTime: 0
+};
+
+function generateTargetDate() {
+    const month = Math.floor(Math.random() * 12) + 1; // 1-12
+    const day = Math.floor(Math.random() * 28) + 1; // 1-28 (safe for all months)
+    const year = Math.floor(Math.random() * (2030 - 2020 + 1)) + 2020; // 2020-2030
+    targetDate = { month, day, year };
+}
+
+function checkMatch() {
+    if (!targetDate || !submittedDate) return false;
+    return submittedDate.month === targetDate.month && 
+           submittedDate.day === targetDate.day && 
+           submittedDate.year === targetDate.year;
+}
+
+// Fireworks particle system (full screen!)
+function createFireworks() {
+    const centerX = window.innerWidth / 2;
+    const centerY = window.innerHeight / 2;
+    
+    for (let i = 0; i < 80; i++) {
+        const angle = (Math.PI * 2 * i) / 80;
+        const speed = 3 + Math.random() * 5;
+        particles.push({
+            x: centerX,
+            y: centerY,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            life: 1.0,
+            color: `hsl(${Math.random() * 360}, 100%, 50%)`
+        });
+    }
+}
+
+function updateFireworks() {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.15; // Gravity
+        p.life -= 0.015;
+        
+        if (p.life <= 0) {
+            particles.splice(i, 1);
+        }
+    }
+}
+
+function drawFireworks() {
+    // Clear the full-screen canvas
+    fireworksCtx.clearRect(0, 0, fireworksCanvas.width, fireworksCanvas.height);
+    
+    particles.forEach(p => {
+        fireworksCtx.fillStyle = p.color;
+        fireworksCtx.globalAlpha = p.life;
+        fireworksCtx.beginPath();
+        fireworksCtx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+        fireworksCtx.fill();
+        
+        // Add a glow effect
+        fireworksCtx.shadowBlur = 15;
+        fireworksCtx.shadowColor = p.color;
+    });
+    fireworksCtx.globalAlpha = 1.0;
+    fireworksCtx.shadowBlur = 0;
+}
+
+// Initialize target
+generateTargetDate();
 
 // Draw a spinning digit wheel
 function drawDigit(digit) {
@@ -228,6 +322,29 @@ canvas.addEventListener('mousedown', (e) => {
     mouseX = e.clientX - rect.left;
     mouseY = e.clientY - rect.top;
     
+    // Check if clicking submit button
+    if (submitButton.hovered) {
+        submittedDate = getCurrentDate();
+        
+        // Check for match
+        if (checkMatch()) {
+            showFireworks = true;
+            fireworksTime = Date.now();
+            fireworksCanvas.style.display = 'block';
+            createFireworks();
+            createFireworks(); // Multiple bursts!
+            setTimeout(() => createFireworks(), 200);
+            setTimeout(() => createFireworks(), 400);
+            setTimeout(() => createFireworks(), 600);
+            setTimeout(() => createFireworks(), 800);
+        } else {
+            // Wrong answer - shake the button!
+            submitButton.shaking = true;
+            submitButton.shakeTime = Date.now();
+        }
+        return;
+    }
+    
     // Check if clicking on any lever handle
     Object.keys(levers).forEach(name => {
         const lever = levers[name];
@@ -247,6 +364,12 @@ canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect();
     mouseX = e.clientX - rect.left;
     mouseY = e.clientY - rect.top;
+    
+    // Check if hovering over submit button
+    submitButton.hovered = mouseX >= submitButton.x && 
+                           mouseX <= submitButton.x + submitButton.width &&
+                           mouseY >= submitButton.y && 
+                           mouseY <= submitButton.y + submitButton.height;
     
     Object.keys(levers).forEach(name => {
         const lever = levers[name];
@@ -281,7 +404,7 @@ canvas.addEventListener('mousemove', (e) => {
         const dist = Math.sqrt((mouseX - handleX) ** 2 + (mouseY - handleY) ** 2);
         if (dist < 20) overHandle = true;
     });
-    canvas.style.cursor = overHandle ? 'grab' : 'default';
+    canvas.style.cursor = (overHandle || submitButton.hovered) ? 'pointer' : 'default';
 });
 
 canvas.addEventListener('mouseup', () => {
@@ -316,11 +439,34 @@ function animate() {
     ctx.fillStyle = '#ecf0f1';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     
-    // Minimal header spacing
-    // (no title needed)
-    
     // Update physics
     update();
+    
+    // Update shake animation
+    if (submitButton.shaking) {
+        const elapsed = Date.now() - submitButton.shakeTime;
+        if (elapsed < 500) {
+            // Shake with decreasing intensity
+            const intensity = 10 * (1 - elapsed / 500);
+            submitButton.shakeOffset = Math.sin(elapsed * 0.05) * intensity;
+        } else {
+            submitButton.shaking = false;
+            submitButton.shakeOffset = 0;
+        }
+    }
+    
+    // Update fireworks
+    if (showFireworks) {
+        updateFireworks();
+        drawFireworks();
+        
+        // End fireworks after 4 seconds
+        if (Date.now() - fireworksTime > 4000 && particles.length === 0) {
+            showFireworks = false;
+            fireworksCanvas.style.display = 'none';
+            generateTargetDate(); // New challenge!
+        }
+    }
     
     // Draw digits
     Object.values(digits).forEach(digit => drawDigit(digit));
@@ -331,18 +477,57 @@ function animate() {
     // Draw levers
     Object.keys(levers).forEach(name => drawLever(name, levers[name]));
     
-    // Display current date (minimal)
+    // Draw target date (LEFT SIDE)
+    if (targetDate) {
+        ctx.fillStyle = '#34495e';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Target Date:', 200, 500);
+        
+        ctx.fillStyle = '#e74c3c';
+        ctx.font = 'bold 20px monospace';
+        ctx.fillText(`${String(targetDate.month).padStart(2, '0')}-${String(targetDate.day).padStart(2, '0')}-${targetDate.year}`, 
+                     200, 525);
+    }
+    
+    // Display current date (RIGHT SIDE)
     const date = getCurrentDate();
-    ctx.fillStyle = '#2c3e50';
-    ctx.font = 'bold 18px monospace';
+    ctx.fillStyle = '#34495e';
+    ctx.font = '14px sans-serif';
     ctx.textAlign = 'center';
+    ctx.fillText('Selected Date:', 600, 500);
+    
+    ctx.fillStyle = '#2c3e50';
+    ctx.font = 'bold 20px monospace';
     ctx.fillText(`${String(date.month).padStart(2, '0')}-${String(date.day).padStart(2, '0')}-${date.year}`, 
-                 canvas.width / 2, 520);
+                 600, 525);
+    
+    // Draw submit button (between the dates, with shake effect)
+    const buttonX = submitButton.x + submitButton.shakeOffset;
+    ctx.fillStyle = submitButton.hovered ? '#45a049' : '#4CAF50';
+    ctx.fillRect(buttonX, submitButton.y, submitButton.width, submitButton.height);
+    ctx.strokeStyle = submitButton.shaking ? '#e74c3c' : '#2c3e50';
+    ctx.lineWidth = submitButton.shaking ? 3 : 2;
+    ctx.strokeRect(buttonX, submitButton.y, submitButton.width, submitButton.height);
+    
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Submit', buttonX + submitButton.width / 2, submitButton.y + submitButton.height / 2);
+    
+    // Draw success message on main canvas
+    if (showFireworks) {
+        ctx.fillStyle = '#27ae60';
+        ctx.font = 'bold 72px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('🎉 SUCCESS! 🎉', canvas.width / 2, 100);
+    }
     
     requestAnimationFrame(animate);
 }
 
-// Controls (simplified)
+// Controls
 document.getElementById('resetBtn').addEventListener('click', () => {
     digits.month1.value = 0;
     digits.month1.velocity = 0;
