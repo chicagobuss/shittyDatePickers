@@ -53,6 +53,13 @@ const levers = {
     year:  { baseX: 600, baseY: 385, angle: 0, dragging: false, target: ['year4'] } // Only control ones place, let physics drag the rest
 };
 
+// Fine-tune levers (like minute hand) - same pivot, start pointing left, 10x less sensitive
+const fineLevers = {
+    month: { baseX: 200, baseY: 385, angle: Math.PI, dragging: false, target: ['month2', 'month1'] },
+    day:   { baseX: 400, baseY: 385, angle: Math.PI, dragging: false, target: ['day2', 'day1'] },
+    year:  { baseX: 600, baseY: 385, angle: Math.PI, dragging: false, target: ['year4'] }
+};
+
 const DRAG_INFLUENCE = 0.015; // How much adjacent digits affect each other
 const FRICTION = 0.95;        // Friction to slow down spinning
 
@@ -86,7 +93,7 @@ const submitButton = {
 function generateTargetDate() {
     const month = Math.floor(Math.random() * 12) + 1; // 1-12
     const day = Math.floor(Math.random() * 28) + 1; // 1-28 (safe for all months)
-    const year = Math.floor(Math.random() * (2030 - 1970 + 1)) + 1970; // 1970-2030
+    const year = Math.floor(Math.random() * (2030 - 2000 + 1)) + 2000; // 2000-2030
     targetDate = { month, day, year };
 }
 
@@ -217,36 +224,38 @@ function drawDigit(digit) {
 }
 
 // Draw a lever
-function drawLever(name, lever) {
+function drawLever(name, lever, isFine = false) {
     const scale = canvas.width / 800;
-    const handleLength = 80 * scale;
+    const handleLength = isFine ? 50 * scale : 80 * scale;  // Shorter for fine-tune
     const baseX = getScaledX(lever.baseX);
     const baseY = getScaledY(lever.baseY);
     const handleX = baseX + Math.cos(lever.angle) * handleLength;
     const handleY = baseY + Math.sin(lever.angle) * handleLength;
     
-    // Draw base
-    ctx.fillStyle = '#34495e';
-    ctx.beginPath();
-    ctx.arc(baseX, baseY, 15 * scale, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#2c3e50';
-    ctx.lineWidth = 2 * scale;
-    ctx.stroke();
+    // Draw base (only for main levers, not for fine-tune)
+    if (!isFine) {
+        ctx.fillStyle = '#34495e';
+        ctx.beginPath();
+        ctx.arc(baseX, baseY, 15 * scale, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#2c3e50';
+        ctx.lineWidth = 2 * scale;
+        ctx.stroke();
+    }
     
     // Draw lever arm
     ctx.beginPath();
     ctx.moveTo(baseX, baseY);
     ctx.lineTo(handleX, handleY);
-    ctx.strokeStyle = lever.dragging ? '#e74c3c' : '#7f8c8d';
-    ctx.lineWidth = 6 * scale;
+    ctx.strokeStyle = lever.dragging ? '#e74c3c' : (isFine ? '#3498db' : '#7f8c8d');  // Blue for fine-tune
+    ctx.lineWidth = isFine ? 3 * scale : 6 * scale;  // Thinner for fine-tune
     ctx.lineCap = 'round';
     ctx.stroke();
     
     // Draw handle
-    ctx.fillStyle = lever.dragging ? '#e74c3c' : '#ff8c42';
+    ctx.fillStyle = lever.dragging ? '#e74c3c' : (isFine ? '#5dade2' : '#ff8c42');  // Light blue for fine-tune
     ctx.beginPath();
-    ctx.arc(handleX, handleY, 12 * scale, 0, Math.PI * 2);
+    ctx.arc(handleX, handleY, isFine ? 8 * scale : 12 * scale, 0, Math.PI * 2);  // Smaller for fine-tune
     ctx.fill();
     ctx.strokeStyle = '#2c3e50';
     ctx.lineWidth = 2 * scale;
@@ -257,11 +266,13 @@ function drawLever(name, lever) {
         drawTutorialArrows(handleX, handleY, lever.angle, scale);
     }
     
-    // Draw label
-    ctx.fillStyle = '#34495e';
-    ctx.font = `bold ${14 * scale}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.fillText(name.toUpperCase(), baseX, baseY + 35 * scale);
+    // Draw label (only for main levers)
+    if (!isFine) {
+        ctx.fillStyle = '#34495e';
+        ctx.font = `bold ${14 * scale}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(name.toUpperCase(), baseX, baseY + 35 * scale);
+    }
 }
 
 // Draw animated arrows around handle to indicate dragging
@@ -463,7 +474,24 @@ function handlePointerDown(e) {
         return;
     }
     
-    // Check if clicking on any lever handle
+    // Check fine-tune levers first (prioritize since they're smaller)
+    Object.keys(fineLevers).forEach(name => {
+        const lever = fineLevers[name];
+        const handleLength = 50 * scale;  // Fine-tune handle length
+        const baseX = getScaledX(lever.baseX);
+        const baseY = getScaledY(lever.baseY);
+        const handleX = baseX + Math.cos(lever.angle) * handleLength;
+        const handleY = baseY + Math.sin(lever.angle) * handleLength;
+        const dist = Math.sqrt((mouseX - handleX) ** 2 + (mouseY - handleY) ** 2);
+        
+        if (dist < 15 * scale) {  // Smaller hit area for fine-tune
+            lever.dragging = true;
+            hasMovedLever = true;
+            previousMouseAngle = Math.atan2(mouseY - baseY, mouseX - baseX);
+        }
+    });
+    
+    // Check main lever handles
     Object.keys(levers).forEach(name => {
         const lever = levers[name];
         const handleLength = 80 * scale;
@@ -500,6 +528,35 @@ function handlePointerMove(e) {
                            mouseY >= buttonY && 
                            mouseY <= buttonY + buttonHeight;
     
+    // Handle fine-tune lever dragging (10x less sensitive + affects main lever)
+    Object.keys(fineLevers).forEach(name => {
+        const lever = fineLevers[name];
+        if (lever.dragging) {
+            const baseX = getScaledX(lever.baseX);
+            const baseY = getScaledY(lever.baseY);
+            const currentAngle = Math.atan2(mouseY - baseY, mouseX - baseX);
+            let angleDelta = currentAngle - previousMouseAngle;
+            
+            // Handle angle wrapping
+            if (angleDelta > Math.PI) angleDelta -= Math.PI * 2;
+            if (angleDelta < -Math.PI) angleDelta += Math.PI * 2;
+            
+            lever.angle = currentAngle;
+            previousMouseAngle = currentAngle;
+            
+            // Apply velocity (10x less sensitive)
+            const speed = angleDelta * 0.15;  // 10x less than 1.5
+            lever.target.forEach(digitKey => {
+                const digit = digits[digitKey];
+                digits[digitKey].velocity += speed * digit.gearRatio;
+            });
+            
+            // Push the main lever at 10:1 ratio (fine-tune moves main)
+            levers[name].angle += angleDelta / 10;
+        }
+    });
+    
+    // Handle main lever dragging
     Object.keys(levers).forEach(name => {
         const lever = levers[name];
         if (lever.dragging) {
@@ -522,11 +579,28 @@ function handlePointerMove(e) {
                 const digit = digits[digitKey];
                 digits[digitKey].velocity += speed * digit.gearRatio;
             });
+            
+            // Push the fine-tune lever at 10:1 ratio (main moves fine-tune)
+            fineLevers[name].angle += angleDelta * 10;
         }
     });
     
     // Update cursor
     let overHandle = false;
+    
+    // Check fine-tune levers
+    Object.keys(fineLevers).forEach(name => {
+        const lever = fineLevers[name];
+        const handleLength = 50 * scale;
+        const baseX = getScaledX(lever.baseX);
+        const baseY = getScaledY(lever.baseY);
+        const handleX = baseX + Math.cos(lever.angle) * handleLength;
+        const handleY = baseY + Math.sin(lever.angle) * handleLength;
+        const dist = Math.sqrt((mouseX - handleX) ** 2 + (mouseY - handleY) ** 2);
+        if (dist < 15 * scale) overHandle = true;
+    });
+    
+    // Check main levers
     Object.keys(levers).forEach(name => {
         const lever = levers[name];
         const handleLength = 80 * scale;
@@ -537,6 +611,7 @@ function handlePointerMove(e) {
         const dist = Math.sqrt((mouseX - handleX) ** 2 + (mouseY - handleY) ** 2);
         if (dist < 20 * scale) overHandle = true;
     });
+    
     canvas.style.cursor = (overHandle || submitButton.hovered) ? 'pointer' : 'default';
 }
 
@@ -544,6 +619,9 @@ function handlePointerUp(e) {
     e.preventDefault();
     Object.keys(levers).forEach(name => {
         levers[name].dragging = false;
+    });
+    Object.keys(fineLevers).forEach(name => {
+        fineLevers[name].dragging = false;
     });
 }
 
@@ -643,8 +721,9 @@ function animate() {
     // Draw separators
     drawSeparators();
     
-    // Draw levers
-    Object.keys(levers).forEach(name => drawLever(name, levers[name]));
+    // Draw levers (main levers first, then fine-tune on top)
+    Object.keys(levers).forEach(name => drawLever(name, levers[name], false));
+    Object.keys(fineLevers).forEach(name => drawLever(name, fineLevers[name], true));
     
     const scale = canvas.width / 800;
     
