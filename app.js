@@ -384,19 +384,19 @@ function update() {
     // Month changes affect day (0.5%) and year (0.4%) - very subtle!
     const monthVel = (digits.month1.velocity + digits.month2.velocity) / 2;
     const monthToDayDrag = monthVel * 0.005;
-    digits.day2.velocity += abs(monthToDayDrag);
+    digits.day2.velocity += Math.abs(monthToDayDrag);
     
     const monthToYearDrag = monthVel * 0.004;
-    digits.year4.velocity += abs(monthToYearDrag);
+    digits.year4.velocity += Math.abs(monthToYearDrag);
     
     // Day digits drag the year ONES place (subtle)
     const dayVel = (digits.day1.velocity + digits.day2.velocity) / 2;
     const dayToYearDrag = dayVel * DRAG_INFLUENCE * 0.5;
-    digits.year4.velocity += abs(dayToYearDrag);
+    digits.year4.velocity += Math.abs(dayToYearDrag);
     
     // Year ones place drags the month TENS place (circular dependency, subtle!)
     const yearOnesToMonthDrag = digits.year4.velocity * DRAG_INFLUENCE * 0.5;
-    digits.month1.velocity += abs(yearOnesToMonthDrag);
+    digits.month1.velocity += Math.abs(yearOnesToMonthDrag);
 }
 
 // Mouse/Touch handling for levers
