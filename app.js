@@ -93,7 +93,7 @@ const submitButton = {
 function generateTargetDate() {
     const month = Math.floor(Math.random() * 12) + 1; // 1-12
     const day = Math.floor(Math.random() * 28) + 1; // 1-28 (safe for all months)
-    const year = Math.floor(Math.random() * (2030 - 2000 + 1)) + 2000; // 2000-2030
+    const year = Math.floor(Math.random() * (2030 - 2010 + 1)) + 2010; // 2010-2030
     targetDate = { month, day, year };
 }
 
